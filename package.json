@@ -1,6 +1,6 @@
 {
   "name": "backbone-live",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Mixin for Backbone Models and Collections for interacting with Pusher channels",
   "main": "main.js",
   "scripts": {
