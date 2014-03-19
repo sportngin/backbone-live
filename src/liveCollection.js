@@ -56,7 +56,8 @@ module.exports = function() {
     liveAdd: function(model) {
       model = this.liveFilter(model)
       if (!this.get(model.id)) {
-        this.add(model).trigger('live:add', model, this)
+        this.add(model)
+        this.get(model.id).trigger('live:add', model, this)
       }
     },
 
