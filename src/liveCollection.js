@@ -55,9 +55,10 @@ module.exports = function() {
 
     liveAdd: function(model) {
       model = this.liveFilter(model)
-      if (!this.get(model.id)) {
+      if (model && model.id && !this.get(model.id)) {
         this.add(model)
-        this.get(model.id).trigger('live:add', model, this)
+        var newModel = this.get(model.id)
+        newModel.trigger('live:add', newModel, this)
       }
     },
 
@@ -67,7 +68,7 @@ module.exports = function() {
         this.liveAdd(model)
       } else if (!outdatedUpdate(this.timeStamp, collectionModel, model)) {
         collectionModel.set(model)
-        collectionModel.trigger('live:update', model, this)
+        collectionModel.trigger('live:update', collectionModel, this)
       }
     },
 

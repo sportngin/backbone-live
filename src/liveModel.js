@@ -55,7 +55,7 @@ module.exports = function() {
       var collectionModel = this.get(model.id)
       if (!outdatedUpdate(this.timeStamp, collectionModel, model)) {
         collectionModel.set(model)
-        collectionModel.trigger('live:update', model, this)
+        collectionModel.trigger('live:update', collectionModel, this)
       }
     },
 
