@@ -5,29 +5,20 @@
 module.exports = function() {
 
   return {
-
     live: function(options) {
-      this.opts = options
-      var collection = this
-
       options = options || {}
-
-      // Set Options
-      this.addOnUpdate = options.addOnUpdate
-      this.filtered = options.filtered
-      this.eventType = options.eventType
-      this.pusher = options.pusher
-      this.pusherChannel = options.pusherChannel
-      this.channelName = options.channelName
-      this.timeStamp = options.timeStamp
+      this.liveOpts = options
+      var collection = this
+      var liveOpts = this.liveOpts
 
       // Create channel
-      setLogging(options.log)
-      this.pusherChannel = createChannel(this.pusher, this.pusherChannel, this.channelName)
+      setLogging(liveOpts.log)
+      this.pusherChannel = createChannel(liveOpts.pusher, liveOpts.pusherChannel, liveOpts.channelName)
+      liveOpts.pusherChannel = this.pusherChannel
       if (!this.pusherChannel) return
 
       // Bind message events
-      bindChannel(collection, this.pusherChannel, this.eventType)
+      bindChannel(collection, this.pusherChannel, liveOpts.eventType)
 
       this.isLive = true
       return this.pusherChannel
@@ -35,15 +26,16 @@ module.exports = function() {
 
     die: function() {
       this.isLive = false
+      var liveOpts = this.liveOpts
       if (this.pusherChannel) {
-        this.pusherChannel.unbind("update_" + this.eventType)
+        this.pusherChannel.unbind("update_" + liveOpts.eventType)
       }
       return this.pusherChannel
     },
 
     killAll: function() {
       var c = this.die()
-      this.pusher.unsubscribe(this.channelName)
+      this.pusher.unsubscribe(this.liveOpts.channelName)
       return c
     },
 
@@ -53,13 +45,19 @@ module.exports = function() {
 
     liveUpdate: function(model){
       var collectionModel = this.get(model.id)
-      if (!outdatedUpdate(this.timeStamp, collectionModel, model)) {
-        collectionModel.set(model)
+      if (!collectionModel) {
+        this.liveAdd(model)
+      } else if (!outdatedUpdate(this.timeStamp, collectionModel, model)) {
+        collectionModel.set(model, {silent: this.liveOpts.silent})
         collectionModel.trigger('live:update', collectionModel, this)
       }
     },
 
     liveParse: function(model){
+      return model
+    },
+
+    liveFilter: function(model){
       return model
     }
 
@@ -67,11 +65,12 @@ module.exports = function() {
 }
 
 function handler(method, pushObj) {
+  if (this.liveOpts.syncedOnly && !pushObj.synced) return
   var model = JSON.parse(pushObj.message)
   model = this.liveParse(model)
 
   switch(method){
-    case 'update' : return (this.opts.update || this.liveUpdate).call(this, model)
+    case 'update' : return (this.liveOpts.update || this.liveUpdate).call(this, model)
   }
 }
 
