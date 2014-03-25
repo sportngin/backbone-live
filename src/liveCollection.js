@@ -58,7 +58,7 @@ module.exports = function() {
       var collectionModel = this.get(model.id)
       if (!collectionModel) {
         this.liveAdd(model)
-      } else if (!outdatedUpdate(this.timeStamp, collectionModel, model)) {
+      } else if (!outdatedUpdate(this.liveOpts.timeStamp, collectionModel, model)) {
         collectionModel.set(model, {silent: this.liveOpts.silent})
         collectionModel.trigger('live:update', collectionModel, this)
       }
@@ -117,6 +117,14 @@ function createChannel(pusher, pusherChannel, channelName) {
   if (!pusherChannel) {
     pusherChannel = pusher.subscribe(channelName)
   }
+
+  pusherChannel.bind('pusher:subscription_error', function(status) {
+    Pusher.log("subscription_error ", status)
+  })
+
+  pusherChannel.bind('pusher:subscription_succeeded', function() {
+    Pusher.log("subscription_succeeded")
+  })
 
   return pusherChannel
 }
