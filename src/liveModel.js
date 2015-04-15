@@ -1,123 +1,100 @@
-// LiveModel Mixin for use with Pusher
+// LiveCollection Mixin for use with Pusher
 
 'use-strict'
 
 module.exports = function() {
 
   return {
-    live : function(options) {
-      var _this = this
-
-      this.opts = options
-
-      // default to polling if there's no arguments
+    live: function(options) {
       options = options || {}
-      options.liveType = options.liveType || "poll"
+      this.liveOpts = options
+      var collection = this
+      var liveOpts = this.liveOpts
 
-      // if they've supplied a Pusher object or an existing pusherChannel,
-      // set it up to use Pusher
-      if (options.pusher || options.pusherChannel) {
-        this.liveType = "pusher"
-        this.pusher = options.pusher
-        this.channelName = options.channelName
-        this.eventType = options.eventType
+      // Create channel
+      setLogging(liveOpts.log)
+      this.pusherChannel = createChannel(liveOpts.pusher, liveOpts.pusherChannel, liveOpts.channelName)
+      liveOpts.pusherChannel = this.pusherChannel
+      if (!this.pusherChannel) return
 
-        // optional parameters
-        this.channelType = ""
-        if (options.channelType === "private" || options.channelType === "presence" )
-          this.channelType = options.channelType + "-"
+      // Bind message events
+      bindChannel(collection, this.pusherChannel, liveOpts.eventType)
 
-        this.log = options.log || false
-        if (this.log) {
-          Pusher.log = function(message) {
-            if (window.console && window.console.log) window.console.log(message)
-          }
-        }
-      } else {
-        // fail back to polling
-        this.liveType = "poll"
-        this.tries = options.tries || 5
-        this.interval = options.interval || 5000
-      }
-
-
-      if (this.liveType === "pusher") {
-
-        if (!options.pusherChannel) {
-          this.pusherChannel = this.pusher.subscribe(this.channelType + this.channelName)
-          options.pusherChannel = this.pusherChannel // save it in the options
-        } else {
-          this.pusherChannel = options.pusherChannel
-        }
-
-        this.pusherChannel.bind("update_" + this.eventType, function(model) {
-          if (_this.get("id") === model.id) {
-            _this.set(model)
-          }
-        })
-
-        return this.pusherChannel
-
-      } else if (this.liveType === "poll") {
-        var polledCount = 0
-
-        // Cancel any potential previous stream.
-        this.die()
-
-        var update = function() {
-
-          this.isLive = true
-          // Make a shallow copy of the options object.
-            // `Backbone.collection.fetch` wraps the success function
-            // in an outer function (line `527`), replacing options.success.
-            // That means if we don't copy the object every poll, we'll end
-            // up modifying the reference object and creating callback inception.
-            //
-            // Furthermore, since the sync success wrapper
-            // that wraps and replaces options.success has a different arguments
-            // order, you'll end up getting the wrong arguments.
-            var opts = _.clone(options)
-
-            if (!this.tries || polledCount < this.tries) {
-              polledCount = polledCount + 1
-
-              this.fetch(opts)
-              this.pollTimeout = setTimeout(update, this.interval)
-            }
-
-        }.bind(this)
-
-        update()
-      }
+      this.isLive = true
+      return this.pusherChannel
     },
 
-    die : function() {
+    die: function() {
       this.isLive = false
-
-      if (this.liveType === "pusher") {
-        if (this.pusherChannel) {
-          this.pusherChannel.unbind("update_" + this.eventType)
-          this.pusher.unsubscribe(this.channelType + this.channel)
-        }
-
-        return this.pusherChannel
-
-      } else if (this.liveType === "poll") {
-        clearTimeout(this.pollTimeout)
-        delete this.pollTimeout
+      var liveOpts = this.liveOpts
+      if (this.pusherChannel) {
+        this.pusherChannel.unbind("update_" + liveOpts.eventType)
       }
+      return this.pusherChannel
     },
 
-    killAll : function() {
+    killAll: function() {
       var c = this.die()
-      if (this.liveType === "pusher") {
-        this.pusher.unsubscribe(this.channelType + this.channel)
-      }
+      this.pusher.unsubscribe(this.liveOpts.channelName)
       return c
     },
 
-    isLive : function() {
+    isLive: function() {
       return this.isLive
+    },
+
+    liveUpdate: function(model){
+      var collectionModel = this.get(model.id)
+      if (!collectionModel) {
+        this.liveAdd(model)
+      } else if (!outdatedUpdate(this.timeStamp, collectionModel, model)) {
+        collectionModel.set(model, {silent: this.liveOpts.silent})
+        collectionModel.trigger('live:update', collectionModel, this)
+      }
+    },
+
+    liveParse: function(model){
+      return model
+    },
+
+    liveFilter: function(model){
+      return model
+    }
+
+  }
+}
+
+function handler(method, pushObj) {
+  if (this.liveOpts.syncedOnly && !pushObj.synced) return
+  var model = JSON.parse(pushObj.message)
+  model = this.liveParse(model)
+
+  switch(method){
+    case 'update' : return (this.liveOpts.update || this.liveUpdate).call(this, model)
+  }
+}
+
+function bindChannel(collection, channel, eventType) {
+  channel.bind("update_" + eventType, handler.bind(collection, 'update'))
+}
+
+function setLogging(log) {
+  if (log) {
+    Pusher.log = function(message) {
+      if (window.console && window.console.log) window.console.log(message)
     }
   }
 }
+
+function createChannel(pusher, pusherChannel, channelName) {
+  if (!pusherChannel) {
+    pusherChannel = pusher.subscribe(channelName)
+  }
+
+  return pusherChannel
+}
+
+function outdatedUpdate(timeStamp, collectionModel, model){
+  return (timeStamp && (collectionModel.attributes[timeStamp] >= model[timeStamp]))
+}
+
